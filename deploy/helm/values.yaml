@@ -23,3 +23,9 @@ resources:
 job:
   activeDeadlineSecondsBuffer: 30  # added on top of WALLCLOCK_TIMEOUT_SECONDS
   ttlSecondsAfterFinished: 60
+
+spire:
+  enabled: true
+
+gvisor:
+  install: false  # cluster admins install the RuntimeClass separately by default

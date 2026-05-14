@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -12,13 +13,12 @@ import (
 	"github.com/lee-mcfaul2/agent-sandbox/internal/llm"
 	"github.com/lee-mcfaul2/agent-sandbox/internal/loop"
 	"github.com/lee-mcfaul2/agent-sandbox/internal/obs"
-	"github.com/lee-mcfaul2/agent-sandbox/internal/prompt"
 	"github.com/lee-mcfaul2/agent-sandbox/internal/schemas"
 	"github.com/lee-mcfaul2/agent-sandbox/internal/tools"
 )
 
-// systemPrompt is the embedded system prompt shipped with the binary.
-var systemPrompt = prompt.System
+//go:embed system.txt
+var systemPrompt string
 
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "--print-bundle-digest" {

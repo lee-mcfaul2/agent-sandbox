@@ -1,0 +1,25 @@
+version: "3.9"
+services:
+  sandbox:
+    build:
+      context: ../..
+      dockerfile: deploy/Dockerfile
+      args:
+        BUNDLE_SOURCE: fixture
+    environment:
+      REQUEST_UUID: "11111111-1111-4111-8111-111111111111"
+      PROMPT_UUID: "22222222-2222-4222-8222-222222222222"
+      LITELLM_URL: "http://mock-gateway:8080"
+      GATEWAY_MCP_URL: "http://mock-gateway:8080"
+      AVAILABLE_TOOLS: "kb.search"
+      TOKENIZED_USER_INPUT: "hello"
+      MODEL: "test-model"
+      MAX_ITERATIONS: "4"
+      WALLCLOCK_TIMEOUT_SECONDS: "30"
+      TRACEPARENT: "00-aaaa-bbbb-01"
+    depends_on:
+      - mock-gateway
+  mock-gateway:
+    image: ghcr.io/wiremock/wiremock:3.13.0
+    ports:
+      - "8080:8080"

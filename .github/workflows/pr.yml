@@ -1,0 +1,46 @@
+name: pr
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache: true
+      - name: fixtures
+        run: make fixtures
+      - name: vet
+        run: go vet ./...
+      - name: lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.62
+      - name: unit
+        run: go test ./... -coverprofile=coverage.txt
+      - name: build binary
+        run: make build
+      - name: integration
+        run: make test-integration
+
+  helm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.15.0
+      - name: lint
+        run: helm lint deploy/helm/
+
+  dockerfile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: deploy/Dockerfile

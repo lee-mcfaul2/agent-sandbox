@@ -1,0 +1,87 @@
+name: build-and-sign
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write   # cosign keyless
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: sigstore/cosign-installer@v3
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+      - name: build + push
+        id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            BUNDLE_SOURCE=oci
+            LIB_AGENT_PROMPT_REF=${{ vars.LIB_AGENT_PROMPT_REF }}
+            COSIGN_IDENTITY=${{ vars.LIB_AGENT_PROMPT_COSIGN_IDENTITY }}
+          tags: |
+            ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+            ghcr.io/${{ github.repository }}:latest
+      - name: cosign keyless sign
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: cosign sign --yes "ghcr.io/${{ github.repository }}@${DIGEST}"
+      - name: sbom (syft)
+        uses: anchore/sbom-action@v0
+        with:
+          image: ghcr.io/${{ github.repository }}@${{ steps.push.outputs.digest }}
+          format: spdx-json
+          artifact-name: sbom.spdx.json
+      - name: slsa provenance
+        uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.0.0
+        with:
+          image: ghcr.io/${{ github.repository }}
+          digest: ${{ steps.push.outputs.digest }}
+
+  chart:
+    runs-on: ubuntu-latest
+    needs: image
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.15.0
+      - uses: sigstore/cosign-installer@v3
+      - name: package chart with image digest
+        run: |
+          helm package deploy/helm \
+            --app-version "${GITHUB_REF_NAME#v}" \
+            --version    "${GITHUB_REF_NAME#v}" \
+            --destination dist/
+      - name: login to ghcr (OCI)
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: push chart as OCI
+        id: push-chart
+        run: |
+          OUT=$(helm push dist/agent-sandbox-*.tgz oci://ghcr.io/${{ github.repository_owner }} 2>&1)
+          echo "$OUT"
+          DIGEST=$(echo "$OUT" | grep -oE 'Digest: sha256:[a-f0-9]+' | awk '{print $2}')
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+      - name: cosign sign chart
+        env:
+          DIGEST: ${{ steps.push-chart.outputs.digest }}
+        run: |
+          cosign sign --yes "ghcr.io/${{ github.repository_owner }}/agent-sandbox-chart@${DIGEST}"

@@ -10,42 +10,29 @@ import (
 	"strings"
 )
 
-// fixtureFS holds the in-package testdata bundle for tests and dev builds.
-// Go's //go:embed does not allow ".." path components, so the production
-// embedded/ directory (at the module root, two levels above this package)
-// cannot be embedded from this file. See LoadFromFS for injecting an
-// fs.FS from outside — the build command uses that to wrap os.DirFS over
-// the embedded/ directory populated by `make fixtures`.
+// embeddedFS holds the lib-agent-prompt bundle the binary ships with.
+// In dev/test, `make fixtures` copies the in-repo testdata into
+// internal/schemas/embedded/ before go test/build.
+// In prod, the Dockerfile populates the same path from the cosign-verified
+// OCI artifact before go build. Either way, this is the single source of
+// truth the binary embeds.
 
-//go:embed all:testdata/lib-agent-prompt
-var fixtureFS embed.FS
+//go:embed all:embedded/lib-agent-prompt
+var embeddedFS embed.FS
 
-const fixtureRoot = "testdata/lib-agent-prompt"
+const embeddedRoot = "embedded/lib-agent-prompt"
 
 // Bundle is a loaded set of JSON Schema documents with a deterministic digest.
 type Bundle struct {
-	// Digest is a sha256 content-hash of all schema keys+values, sorted.
-	// Format: "sha256:<hex>".
-	Digest string
-
-	// Schemas maps "<service>/<tool>.<direction>" → raw JSON Schema bytes.
-	// Example key: "kb/search.request"
-	Schemas map[string][]byte
+	Digest  string            // "sha256:<hex>"
+	Schemas map[string][]byte // "<mcp>/<tool>.<direction>" → raw bytes
 }
 
-// LoadEmbedded loads the bundle from the embedded testdata fixtures.
-// It is always available without any runtime dependencies and is used by
-// tests and by any binary that does not override the schema source.
+// LoadEmbedded loads the bundle from the binary's embedded data.
+// Run `make fixtures` if you get "no schemas found" — the embed target
+// must be populated at build time.
 func LoadEmbedded() (*Bundle, error) {
-	return loadFrom(fixtureFS, fixtureRoot)
-}
-
-// LoadFromFS loads the bundle from the given fs.FS rooted at root.
-// root must point to a lib-agent-prompt directory that contains a
-// services/ subdirectory. This is the production entry-point when the
-// caller wraps os.DirFS over the embedded/ directory.
-func LoadFromFS(fsys fs.FS, root string) (*Bundle, error) {
-	return loadFrom(fsys, root)
+	return loadFrom(embeddedFS, embeddedRoot)
 }
 
 func loadFrom(fsys fs.FS, root string) (*Bundle, error) {
@@ -66,7 +53,6 @@ func loadFrom(fsys fs.FS, root string) (*Bundle, error) {
 		if err != nil {
 			return err
 		}
-		// Strip "servicesRoot/" prefix and ".json" suffix to form the schema key.
 		rel := strings.TrimPrefix(p, servicesRoot+"/")
 		rel = strings.TrimSuffix(rel, ".json")
 		schemas[rel] = data
@@ -75,46 +61,34 @@ func loadFrom(fsys fs.FS, root string) (*Bundle, error) {
 	if err != nil {
 		return nil, fmt.Errorf("walk bundle %s: %w", servicesRoot, err)
 	}
-
 	if len(schemas) == 0 {
-		return nil, fmt.Errorf("no schemas found under %s", servicesRoot)
+		return nil, fmt.Errorf("no schemas found under %s; run `make fixtures`", servicesRoot)
 	}
 
-	digest, err := computeDigest(schemas)
-	if err != nil {
-		return nil, err
-	}
-
-	return &Bundle{Digest: digest, Schemas: schemas}, nil
-}
-
-// computeDigest produces a deterministic sha256 over sorted key/value pairs.
-func computeDigest(schemas map[string][]byte) (string, error) {
 	keys := make([]string, 0, len(schemas))
 	for k := range schemas {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-
 	h := sha256.New()
 	for _, k := range keys {
 		h.Write([]byte(k))
-		h.Write([]byte{0}) // NUL separator
+		h.Write([]byte{0})
 		h.Write(schemas[k])
-		h.Write([]byte{0}) // NUL separator
+		h.Write([]byte{0})
 	}
-	return "sha256:" + hex.EncodeToString(h.Sum(nil)), nil
+	digest := "sha256:" + hex.EncodeToString(h.Sum(nil))
+
+	return &Bundle{Digest: digest, Schemas: schemas}, nil
 }
 
-// RequestSchema returns the raw JSON Schema for the request side of
-// mcp/tool (e.g. mcp="kb", tool="search").
+// RequestSchema returns the raw JSON Schema for the request side of mcp.tool.
 func (b *Bundle) RequestSchema(mcp, tool string) ([]byte, bool) {
 	v, ok := b.Schemas[mcp+"/"+tool+".request"]
 	return v, ok
 }
 
-// ResponseSchema returns the raw JSON Schema for the response side of
-// mcp/tool.
+// ResponseSchema returns the raw JSON Schema for the response side of mcp.tool.
 func (b *Bundle) ResponseSchema(mcp, tool string) ([]byte, bool) {
 	v, ok := b.Schemas[mcp+"/"+tool+".response"]
 	return v, ok

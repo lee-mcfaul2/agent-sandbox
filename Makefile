@@ -6,8 +6,8 @@ build: fixtures
 	CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o $(BIN) ./cmd/sandbox
 
 fixtures:
-	mkdir -p embedded/lib-agent-prompt
-	cp -r internal/schemas/testdata/lib-agent-prompt/* embedded/lib-agent-prompt/
+	mkdir -p internal/schemas/embedded/lib-agent-prompt
+	cp -r internal/schemas/testdata/lib-agent-prompt/* internal/schemas/embedded/lib-agent-prompt/
 
 test:
 	go test ./...
@@ -25,4 +25,4 @@ lint:
 	golangci-lint run ./...
 
 clean:
-	rm -rf bin/ embedded/
+	rm -rf bin/ internal/schemas/embedded/

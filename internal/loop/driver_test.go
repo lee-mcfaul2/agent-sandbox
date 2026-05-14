@@ -114,8 +114,8 @@ func TestDriverOneToolCallThenTerminate(t *testing.T) {
 					Message: llm.AssistantMessage{
 						Role: "assistant",
 						ToolCalls: []llm.ToolCall{{
-							ID:   "c1",
-							Type: "function",
+							ID:       "c1",
+							Type:     "function",
 							Function: llm.FunctionCall{Name: "kb__search", Arguments: `{"q":"x"}`},
 						}},
 					},
@@ -158,8 +158,8 @@ func TestDriverSchemaMismatchHardAbort(t *testing.T) {
 				Message: llm.AssistantMessage{
 					Role: "assistant",
 					ToolCalls: []llm.ToolCall{{
-						ID:   "c1",
-						Type: "function",
+						ID:       "c1",
+						Type:     "function",
 						Function: llm.FunctionCall{Name: "kb__search", Arguments: `{"q":"x"}`},
 					}},
 				},

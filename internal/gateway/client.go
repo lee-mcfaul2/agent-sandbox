@@ -76,7 +76,7 @@ func (c *Client) doTool(ctx context.Context, path string, body []byte) (*ToolRes
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 500 {
 		return nil, fmt.Errorf("gateway http %d", resp.StatusCode)
 	}

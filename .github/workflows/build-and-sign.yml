@@ -64,7 +64,6 @@ jobs:
 
   chart:
     runs-on: ubuntu-latest
-    needs: image
     steps:
       - uses: actions/checkout@v4
       - uses: azure/setup-helm@v4

@@ -34,9 +34,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           build-args: |
-            BUNDLE_SOURCE=oci
-            LIB_AGENT_PROMPT_REF=${{ vars.LIB_AGENT_PROMPT_REF }}
-            COSIGN_IDENTITY=${{ vars.LIB_AGENT_PROMPT_COSIGN_IDENTITY }}
+            BUNDLE_SOURCE=testdata
           tags: |
             ghcr.io/${{ github.repository }}:${{ github.ref_name }}
             ghcr.io/${{ github.repository }}:latest

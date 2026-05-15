@@ -50,11 +50,17 @@ jobs:
           image: ghcr.io/${{ github.repository }}@${{ steps.push.outputs.digest }}
           format: spdx-json
           artifact-name: sbom.spdx.json
-      - name: slsa provenance
-        uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.0.0
-        with:
-          image: ghcr.io/${{ github.repository }}
-          digest: ${{ steps.push.outputs.digest }}
+  provenance:
+    needs: image
+    permissions:
+      id-token: write
+      contents: read
+      actions: read
+      packages: write
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.0.0
+    with:
+      image: ghcr.io/${{ github.repository }}
+      digest: ${{ needs.image.outputs.digest }}
 
   chart:
     runs-on: ubuntu-latest
@@ -76,12 +82,12 @@ jobs:
       - name: push chart as OCI
         id: push-chart
         run: |
-          OUT=$(helm push dist/agent-sandbox-*.tgz oci://ghcr.io/${{ github.repository_owner }} 2>&1)
+          OUT=$(helm push dist/agent-sandbox-*.tgz oci://ghcr.io/${{ github.repository_owner }}/charts 2>&1)
           echo "$OUT"
-          DIGEST=$(echo "$OUT" | grep -oE 'Digest: sha256:[a-f0-9]+' | awk '{print $2}')
+          DIGEST=$(echo "$OUT" | grep -oE 'sha256:[a-f0-9]+' | head -n1)
           echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
       - name: cosign sign chart
         env:
           DIGEST: ${{ steps.push-chart.outputs.digest }}
         run: |
-          cosign sign --yes "ghcr.io/${{ github.repository_owner }}/agent-sandbox-chart@${DIGEST}"
+          cosign sign --yes "ghcr.io/${{ github.repository_owner }}/charts/agent-sandbox@${DIGEST}"

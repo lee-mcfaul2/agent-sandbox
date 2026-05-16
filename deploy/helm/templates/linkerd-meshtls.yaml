@@ -7,4 +7,4 @@ metadata:
     {{- include "agent-sandbox.labels" . | nindent 4 }}
 spec:
   identities:
-    - "spiffe://{{ .Values.linkerd.trustDomain }}/ns/{{ .Values.namespace }}/sa/{{ .Values.serviceAccount.name }}"
+    - "{{ .Values.serviceAccount.name }}.{{ .Values.namespace }}.serviceaccount.identity.linkerd.cluster.local"

@@ -88,6 +88,7 @@ func run() int {
 
 	llmClient := llm.New(cfg.LitellmURL, 60*time.Second)
 	llmClient.Traceparent = cfg.Traceparent
+	llmClient.RequestUUID = cfg.RequestUUID
 
 	driver := &loop.Driver{
 		Config: loop.Config{

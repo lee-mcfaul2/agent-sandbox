@@ -11,10 +11,13 @@ import (
 )
 
 func TestClientHappyPath(t *testing.T) {
+	var gotInternal, gotUUID string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/chat/completions" {
 			t.Errorf("path = %s", r.URL.Path)
 		}
+		gotInternal = r.Header.Get("X-Agent-Gateway-Internal")
+		gotUUID = r.Header.Get("X-Request-UUID")
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(ChatCompletionResponse{
 			Choices: []Choice{
@@ -29,6 +32,7 @@ func TestClientHappyPath(t *testing.T) {
 	defer srv.Close()
 
 	c := New(srv.URL, 500*time.Millisecond)
+	c.RequestUUID = "test-uuid-1234"
 	res, err := c.Call(context.Background(), ChatCompletionRequest{Model: "x"})
 	if err != nil {
 		t.Fatalf("Call: %v", err)
@@ -38,6 +42,12 @@ func TestClientHappyPath(t *testing.T) {
 	}
 	if res.Choices[0].Message.Content != "done" {
 		t.Errorf("content = %q", res.Choices[0].Message.Content)
+	}
+	if gotInternal != "1" {
+		t.Errorf("X-Agent-Gateway-Internal = %q, want \"1\"", gotInternal)
+	}
+	if gotUUID != "test-uuid-1234" {
+		t.Errorf("X-Request-UUID = %q, want \"test-uuid-1234\"", gotUUID)
 	}
 }
 

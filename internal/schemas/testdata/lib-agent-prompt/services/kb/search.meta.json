@@ -1,4 +1,0 @@
-{
-  "requires_permissions": ["kb:read"],
-  "write": false
-}

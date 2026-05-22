@@ -1,10 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
-  "required": ["actor"],
+  "required": ["order_id"],
   "properties": {
-    "actor": {"type": "string"},
-    "after": {"type": "string", "format": "date-time"}
+    "order_id": { "type": "integer", "minimum": 1 }
   },
   "additionalProperties": false
 }

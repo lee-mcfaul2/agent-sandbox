@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ai-security.io/schemas/shared/scrub-types.json",
+  "title": "Scrub categories",
+  "description": "Demo scrub catalog consumed by agent-gateway ScrubCatalog.from_bundle. Each category has a name, a severity class (pii|secret|codeword) that selects tokenize-vs-redact, and ECMA-262 regex backstops applied after schema-annotation detection. PII categories cover the customer fields agent-sql-mcp returns (lookup_customer / search_customer / get_order / list_orders); secret/codeword categories are the broadened-scrub backstops.",
+  "version": "0.1.0-demo",
+  "categories": [
+    {
+      "name": "EMAIL",
+      "severity": "pii",
+      "description": "Email addresses (customer.email).",
+      "patterns": ["\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b"]
+    },
+    {
+      "name": "PHONE",
+      "severity": "pii",
+      "description": "Phone numbers (customer.phone).",
+      "patterns": ["\\+?[0-9][0-9().\\-\\s]{6,}[0-9]"]
+    },
+    {
+      "name": "CREDIT_CARD",
+      "severity": "pii",
+      "description": "Primary account numbers.",
+      "patterns": ["\\b(?:[0-9]{4}[ -]?){3}[0-9]{4}\\b"]
+    },
+    {
+      "name": "SECRET_API_KEY",
+      "severity": "secret",
+      "description": "Provider-style API keys / bearer secrets.",
+      "patterns": ["\\bsk-[A-Za-z0-9]{16,}\\b", "\\bAKIA[0-9A-Z]{16}\\b"]
+    },
+    {
+      "name": "CODEWORD_PROJECT",
+      "severity": "codeword",
+      "description": "Demo project codewords that must never leave the boundary.",
+      "patterns": ["\\bFalcon\\b", "\\bBlackbird\\b"]
+    }
+  ]
+}

@@ -1,4 +1,0 @@
-{
-  "requires_permissions": ["audit:read"],
-  "write": false
-}

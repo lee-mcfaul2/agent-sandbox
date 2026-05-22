@@ -15,6 +15,7 @@ type Client struct {
 	HTTP         *http.Client
 	Traceparent  string
 	RetryBackoff time.Duration
+	RequestUUID  string
 }
 
 func New(baseURL string, timeout time.Duration) *Client {
@@ -57,6 +58,10 @@ func (c *Client) do(ctx context.Context, body []byte) (*ChatCompletionResponse, 
 	httpReq.Header.Set("Content-Type", "application/json")
 	if c.Traceparent != "" {
 		httpReq.Header.Set("traceparent", c.Traceparent)
+	}
+	httpReq.Header.Set("X-Agent-Gateway-Internal", "1")
+	if c.RequestUUID != "" {
+		httpReq.Header.Set("X-Request-UUID", c.RequestUUID)
 	}
 
 	resp, err := c.HTTP.Do(httpReq)

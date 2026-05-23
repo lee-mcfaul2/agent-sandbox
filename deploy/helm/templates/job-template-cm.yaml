@@ -13,7 +13,14 @@ data:
       labels:
         app: agent-sandbox
     spec:
-      runtimeClassName: gvisor
+      # TODO(secure-container): re-enable a RuntimeClass for hardware isolation
+      # once the demo is functionally working. Original plan pinned
+      # `runtimeClassName: gvisor`, but gvisor's userspace netstack does not
+      # honor the iptables redirects that Linkerd's sidecar pattern depends
+      # on, so the proxy is bypassed inside the sandbox pod. The right
+      # successor is Kata Containers (microVM with a real guest kernel where
+      # iptables works normally).
+      # For now the sandbox is a plain container with no RuntimeClass set.
       serviceAccountName: {{ .Values.serviceAccount.name }}
       automountServiceAccountToken: false
       restartPolicy: Never

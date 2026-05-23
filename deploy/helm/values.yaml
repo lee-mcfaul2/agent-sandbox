@@ -26,6 +26,3 @@ job:
 
 spire:
   enabled: true
-
-gvisor:
-  install: false  # cluster admins install the RuntimeClass separately by default

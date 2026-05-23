@@ -8,7 +8,7 @@ The sandbox runs an LLM-controlled loop. Assume it is untrusted from the start.
 |---|---|
 | Sandbox ↔ outside world | NetworkPolicy denies all egress except `gateway` namespace + DNS to `kube-system` |
 | Sandbox ↔ gateway | Linkerd mTLS + `AuthorizationPolicy` accepting only `spiffe://<trust-domain>/ns/sandbox/sa/agent-sandbox-sa` |
-| Process ↔ kernel | gVisor `RuntimeClass=gvisor` |
+| Process ↔ kernel | **None today** (no RuntimeClass set; planned: Kata Containers). gVisor was abandoned because its userspace netstack is incompatible with Linkerd sidecar interception. |
 | Process ↔ image | Distroless, non-root, read-only root FS, all caps dropped, no privilege escalation, seccomp `RuntimeDefault` |
 
 ## What an LLM-controlled agent can attempt

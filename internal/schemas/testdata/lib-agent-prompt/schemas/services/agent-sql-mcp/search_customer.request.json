@@ -6,10 +6,5 @@
     "email": { "type": "string", "format": "email", "maxLength": 320 },
     "phone": { "type": "string", "minLength": 1, "maxLength": 32 }
   },
-  "anyOf": [
-    { "required": ["name"] },
-    { "required": ["email"] },
-    { "required": ["phone"] }
-  ],
   "additionalProperties": false
 }

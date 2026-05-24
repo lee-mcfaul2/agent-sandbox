@@ -1,5 +1,5 @@
 {
-  "description": "List transactions for a specific customer. REQUIRES the customer's numeric customer_id; if you only have a name, email, or phone, call search_customer FIRST to convert that into a customer_id, then call this tool. Optional 'since' (ISO 8601 datetime) and 'limit' (max 100) narrow the result set.",
+  "description": "List transactions. With customer_id, returns that customer's transactions only — use search_customer first if you only have a name/email/phone. WITHOUT customer_id, returns recent transactions across customers, useful for browsing or aggregate questions. Optional 'since' (ISO 8601 datetime) and 'limit' (max 100) narrow the result set; default limit is 25.",
   "requires_permissions": [],
   "write": false
 }

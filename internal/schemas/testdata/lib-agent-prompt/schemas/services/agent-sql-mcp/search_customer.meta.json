@@ -1,5 +1,5 @@
 {
-  "description": "Find customers by name, email, or phone (any one is sufficient; the others are optional refinements). Returns matching customer records INCLUDING their numeric customer_id. Use this FIRST whenever you have a person's name, email, or phone but need the customer_id required by list_orders, lookup_customer, or list_transactions.",
+  "description": "Find customers by name, email, or phone (any combination is fine; all are optional). Returns matching customer records INCLUDING their numeric customer_id. Common usage: (a) call with NO arguments to browse recent customers when you don't yet know any names; (b) call FIRST with a name/email/phone whenever you have a person's identifier but need the customer_id required by list_orders / lookup_customer / list_transactions. Returns up to 25 customers, most-recently-created first.",
   "requires_permissions": [],
   "write": false
 }

@@ -1,4 +1,5 @@
 {
+  "description": "Retrieve a single order by its numeric order_id. Returns the order record (customer, line items, totals, status).",
   "requires_permissions": [],
   "write": false
 }

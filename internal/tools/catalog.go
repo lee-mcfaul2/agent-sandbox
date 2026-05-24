@@ -42,12 +42,21 @@ func BuildCatalog(b *schemas.Bundle, entries []string) (*Catalog, error) {
 		if err := json.Unmarshal(raw, &paramSchema); err != nil {
 			return nil, fmt.Errorf("unmarshal %s.%s request schema: %w", mcp, tool, err)
 		}
+		// Prefer the bundle's per-tool description. Fall back to the
+		// mcp.tool placeholder so callers don't break on older bundles —
+		// but a missing description is a bundle-quality bug that surfaces
+		// as bad model behaviour (model can't infer chain wiring), so the
+		// real fix lives in the bundle, not here.
+		desc := b.ToolDescription(mcp, tool)
+		if desc == "" {
+			desc = fmt.Sprintf("%s.%s", mcp, tool)
+		}
 		cat.Refs = append(cat.Refs, schemas.ToolRef{MCP: mcp, Tool: tool})
 		cat.OpenAITools = append(cat.OpenAITools, map[string]any{
 			"type": "function",
 			"function": map[string]any{
 				"name":        EncodeName(mcp, tool),
-				"description": fmt.Sprintf("%s.%s", mcp, tool),
+				"description": desc,
 				"parameters":  paramSchema,
 			},
 		})

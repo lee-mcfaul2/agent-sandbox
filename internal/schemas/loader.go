@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"embed"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"sort"
@@ -24,8 +25,31 @@ const embeddedRoot = "embedded/lib-agent-prompt"
 
 // Bundle is a loaded set of JSON Schema documents with a deterministic digest.
 type Bundle struct {
-	Digest  string            // "sha256:<hex>"
-	Schemas map[string][]byte // "<mcp>/<tool>.<direction>" → raw bytes
+	Digest  string              // "sha256:<hex>"
+	Schemas map[string][]byte   // "<mcp>/<tool>.<direction>" → raw bytes
+	Meta    map[string]ToolMeta // "<mcp>/<tool>" → per-tool meta from .meta.json
+}
+
+// ToolMeta is the per-tool metadata read from <mcp>/<tool>.meta.json.
+// Description is the human-language sentence surfaced to the LLM as the
+// OpenAI function.description; without it the model sees only the tool
+// name and can't infer chaining (e.g. that search_customer's output is
+// what list_orders needs as input). Meta files are NOT part of the digest
+// so descriptions can be tuned without forcing every consumer to re-pull.
+type ToolMeta struct {
+	Description         string   `json:"description"`
+	RequiresPermissions []string `json:"requires_permissions"`
+	Write               bool     `json:"write"`
+}
+
+// ToolDescription returns the description for mcp.tool from the bundle's
+// meta files. Returns "" if missing; callers should fall back to a placeholder.
+func (b *Bundle) ToolDescription(mcp, tool string) string {
+	m, ok := b.Meta[mcp+"/"+tool]
+	if !ok {
+		return ""
+	}
+	return m.Description
 }
 
 // LoadEmbedded loads the bundle from the binary's embedded data.
@@ -72,6 +96,7 @@ func loadFrom(fsys fs.FS, root string) (*Bundle, error) {
 	}
 
 	schemas := make(map[string][]byte)
+	metas := make(map[string]ToolMeta)
 	servicesRoot := root + "/schemas/services"
 	err := fs.WalkDir(fsys, servicesRoot, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -80,16 +105,28 @@ func loadFrom(fsys fs.FS, root string) (*Bundle, error) {
 		if d.IsDir() {
 			return nil
 		}
-		if !strings.HasSuffix(p, ".request.json") && !strings.HasSuffix(p, ".response.json") {
-			return nil
+		switch {
+		case strings.HasSuffix(p, ".request.json"), strings.HasSuffix(p, ".response.json"):
+			data, err := fs.ReadFile(fsys, p)
+			if err != nil {
+				return err
+			}
+			rel := strings.TrimPrefix(p, servicesRoot+"/")
+			rel = strings.TrimSuffix(rel, ".json")
+			schemas[rel] = data
+		case strings.HasSuffix(p, ".meta.json"):
+			data, err := fs.ReadFile(fsys, p)
+			if err != nil {
+				return err
+			}
+			var m ToolMeta
+			if err := json.Unmarshal(data, &m); err != nil {
+				return fmt.Errorf("parse %s: %w", p, err)
+			}
+			rel := strings.TrimPrefix(p, servicesRoot+"/")
+			rel = strings.TrimSuffix(rel, ".meta.json")
+			metas[rel] = m
 		}
-		data, err := fs.ReadFile(fsys, p)
-		if err != nil {
-			return err
-		}
-		rel := strings.TrimPrefix(p, servicesRoot+"/")
-		rel = strings.TrimSuffix(rel, ".json")
-		schemas[rel] = data
 		return nil
 	})
 	if err != nil {
@@ -115,7 +152,7 @@ func loadFrom(fsys fs.FS, root string) (*Bundle, error) {
 	}
 	digest := "sha256:" + hex.EncodeToString(h.Sum(nil))
 
-	return &Bundle{Digest: digest, Schemas: schemas}, nil
+	return &Bundle{Digest: digest, Schemas: schemas, Meta: metas}, nil
 }
 
 // RequestSchema returns the raw JSON Schema for the request side of mcp.tool.

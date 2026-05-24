@@ -1,4 +1,5 @@
 {
+  "description": "Find customers by name, email, or phone (any one is sufficient; the others are optional refinements). Returns matching customer records INCLUDING their numeric customer_id. Use this FIRST whenever you have a person's name, email, or phone but need the customer_id required by list_orders, lookup_customer, or list_transactions.",
   "requires_permissions": [],
   "write": false
 }

@@ -1,4 +1,5 @@
 {
+  "description": "Retrieve a single customer record by their numeric customer_id. To find customers by name, email, or phone instead, use search_customer.",
   "requires_permissions": [],
   "write": false
 }

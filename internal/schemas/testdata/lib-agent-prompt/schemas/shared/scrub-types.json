@@ -24,6 +24,18 @@
       "patterns": ["\\b(?:[0-9]{4}[ -]?){3}[0-9]{4}\\b"]
     },
     {
+      "name": "NAME",
+      "severity": "pii",
+      "description": "Person names (customer.name and free-text references to people). Detection via Presidio's SpacyRecognizer mapped through ScrubEngine.PRESIDIO_MAP[PERSON]; no regex backstop because person names don't admit a useful pattern.",
+      "patterns": []
+    },
+    {
+      "name": "ADDRESS",
+      "severity": "pii",
+      "description": "Postal/physical addresses (customer.address and free-text mentions). Detection via Presidio's location recognizer mapped through ScrubEngine.PRESIDIO_MAP[LOCATION]; no regex backstop.",
+      "patterns": []
+    },
+    {
       "name": "SECRET_API_KEY",
       "severity": "secret",
       "description": "Provider-style API keys / bearer secrets.",

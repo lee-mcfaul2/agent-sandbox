@@ -99,7 +99,7 @@ func run() int {
 		return 1
 	}
 
-	llmClient := llm.New(cfg.LitellmURL, 60*time.Second)
+	llmClient := newLLMClient(cfg)
 	llmClient.Traceparent = cfg.Traceparent
 	llmClient.RequestUUID = cfg.RequestUUID
 
@@ -137,6 +137,15 @@ func run() int {
 		return 1
 	}
 	return loop.ExitCode(env.Terminate.FinishReason)
+}
+
+// newLLMClient builds the LLM HTTP client with its timeout pinned to the
+// loop's wallclock. The driver wraps every request in
+// context.WithTimeout(WallclockTimeout) and maps context.DeadlineExceeded to
+// FinishWallclockTimeout, so a SHORTER http.Client.Timeout silently re-labels
+// slow-but-successful LLM responses as wallclock breaches. Keep them equal.
+func newLLMClient(cfg *config.Config) *llm.Client {
+	return llm.New(cfg.LitellmURL, time.Duration(cfg.WallclockTimeoutSec)*time.Second)
 }
 
 func emitEnvelope(env loop.Envelope) error {

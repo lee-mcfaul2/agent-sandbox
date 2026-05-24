@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"time"
 
@@ -16,6 +17,17 @@ import (
 	"github.com/lee-mcfaul2/agent-sandbox/internal/schemas"
 	"github.com/lee-mcfaul2/agent-sandbox/internal/tools"
 )
+
+// shutdownLinkerdProxy POSTs to the linkerd-proxy admin /shutdown endpoint.
+// Linkerd 2.14 doesn't auto-shut sidecars when the main container of a Job
+// exits, so the pod stays Running and the K8s Job never reaches Succeeded;
+// the gateway's launcher then waits until active_deadline_seconds kicks in
+// and reports the Job as failed. Best-effort: if the proxy isn't there
+// (pod isn't meshed, or already gone), the POST fails silently.
+func shutdownLinkerdProxy() {
+	c := &http.Client{Timeout: 2 * time.Second}
+	_, _ = c.Post("http://localhost:4191/shutdown", "", nil)
+}
 
 //go:embed system.txt
 var systemPrompt string
@@ -32,6 +44,7 @@ func main() {
 	}
 
 	exitCode := run()
+	shutdownLinkerdProxy()
 	os.Exit(exitCode)
 }
 

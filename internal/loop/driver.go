@@ -49,6 +49,12 @@ func (d *Driver) Run(ctx context.Context) (Envelope, error) {
 
 	totalTokens := TokensUsed{}
 	var calls []ToolCallSummary
+	// priorOutcomes tracks (mcp|tool|arguments) -> outcome for prior tool calls
+	// in this Run. If the LLM re-emits an identical call whose prior outcome was
+	// non-OK, the loop injects a synthetic DUPLICATE_TOOL_CALL tool-result
+	// instead of re-dispatching to the gateway — this forces the next LLM turn
+	// to do something different rather than spinning on the same failing call.
+	priorOutcomes := map[string]string{}
 	iter := 0
 
 	for iter < d.Config.MaxIterations {
@@ -107,7 +113,7 @@ func (d *Driver) Run(ctx context.Context) (Envelope, error) {
 
 		// Dispatch each tool call sequentially.
 		for _, tc := range msg.ToolCalls {
-			summary, fatal, fatalEnv := d.dispatchToolCall(ctx, tc, &messages, iter, calls, totalTokens)
+			summary, fatal, fatalEnv := d.dispatchToolCall(ctx, tc, &messages, iter, calls, totalTokens, priorOutcomes)
 			calls = append(calls, summary)
 			if fatal {
 				return fatalEnv, nil
@@ -129,6 +135,7 @@ func (d *Driver) dispatchToolCall(
 	iter int,
 	calls []ToolCallSummary,
 	tokens TokensUsed,
+	priorOutcomes map[string]string,
 ) (ToolCallSummary, bool, Envelope) {
 	mcp, tool, err := tools.DecodeName(tc.Function.Name)
 	if err != nil || !d.Catalog.Contains(mcp, tool) {
@@ -137,6 +144,28 @@ func (d *Driver) dispatchToolCall(
 		body, _ := json.Marshal(map[string]string{"error": "UNKNOWN_TOOL", "name": tc.Function.Name})
 		*messages = append(*messages, llm.Message{Role: "tool", ToolCallID: tc.ID, Content: string(body)})
 		return ToolCallSummary{MCP: "", Tool: tc.Function.Name, Outcome: "unknown"}, false, Envelope{}
+	}
+
+	// Duplicate-tool-call guard: if this exact (mcp, tool, arguments) triple
+	// already failed in a prior iteration this Run, do not re-dispatch.
+	// Inject a synthetic tool-result so the next LLM turn must do something
+	// different (different tool, different arguments, or terminate).
+	dupKey := mcp + "|" + tool + "|" + tc.Function.Arguments
+	if prior, seen := priorOutcomes[dupKey]; seen && prior != "ok" {
+		d.Logger.Info("duplicate_tool_call_suppressed", map[string]any{
+			"iteration":     iter,
+			"mcp":           mcp,
+			"tool":          tool,
+			"prior_outcome": prior,
+		})
+		body, _ := json.Marshal(map[string]string{
+			"error":  "DUPLICATE_TOOL_CALL",
+			"reason": "this exact call already failed earlier in this run; choose a different tool, different arguments, or terminate with what you have",
+			"mcp":    mcp,
+			"tool":   tool,
+		})
+		*messages = append(*messages, llm.Message{Role: "tool", ToolCallID: tc.ID, Content: string(body)})
+		return ToolCallSummary{MCP: mcp, Tool: tool, Outcome: "duplicate_suppressed"}, false, Envelope{}
 	}
 
 	start := time.Now()
@@ -201,6 +230,9 @@ func (d *Driver) dispatchToolCall(
 
 	body, _ := json.Marshal(res)
 	*messages = append(*messages, llm.Message{Role: "tool", ToolCallID: tc.ID, Content: string(body)})
+
+	// Record outcome for duplicate-call detection on the next iteration.
+	priorOutcomes[dupKey] = outcome
 
 	return ToolCallSummary{MCP: mcp, Tool: tool, Outcome: outcome}, false, Envelope{}
 }

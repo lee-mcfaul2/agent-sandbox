@@ -46,7 +46,7 @@ func mustBundleAndCatalog(t *testing.T) (*schemas.Bundle, *tools.Catalog, *schem
 	if err != nil {
 		t.Fatal(err)
 	}
-	cat, err := tools.BuildCatalog(b, []string{"kb.search"})
+	cat, err := tools.BuildCatalog(b, []string{"agent-sql-mcp.list_orders"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,7 +116,7 @@ func TestDriverOneToolCallThenTerminate(t *testing.T) {
 						ToolCalls: []llm.ToolCall{{
 							ID:       "c1",
 							Type:     "function",
-							Function: llm.FunctionCall{Name: "kb__search", Arguments: `{"q":"x"}`},
+							Function: llm.FunctionCall{Name: "agent-sql-mcp__list_orders", Arguments: `{"limit":1}`},
 						}},
 					},
 				},
@@ -130,9 +130,9 @@ func TestDriverOneToolCallThenTerminate(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"tool_result": map[string]any{
 				"ok":           true,
-				"data":         map[string]any{"rows": []any{map[string]any{"id": "1", "title": "x"}}},
-				"mcp":          "kb",
-				"tool":         "search",
+				"data":         map[string]any{"orders": []any{}},
+				"mcp":          "agent-sql-mcp",
+				"tool":         "list_orders",
 				"request_uuid": "req-1",
 			},
 		})
@@ -141,7 +141,7 @@ func TestDriverOneToolCallThenTerminate(t *testing.T) {
 	if env.Terminate.FinishReason != FinishTerminate {
 		t.Errorf("finish_reason = %s", env.Terminate.FinishReason)
 	}
-	if len(env.Terminate.ToolsCalled) != 1 || env.Terminate.ToolsCalled[0].Tool != "search" {
+	if len(env.Terminate.ToolsCalled) != 1 || env.Terminate.ToolsCalled[0].Tool != "list_orders" {
 		t.Errorf("tools_called = %+v", env.Terminate.ToolsCalled)
 	}
 	if env.Terminate.Iterations != 2 {
@@ -160,7 +160,7 @@ func TestDriverSchemaMismatchHardAbort(t *testing.T) {
 					ToolCalls: []llm.ToolCall{{
 						ID:       "c1",
 						Type:     "function",
-						Function: llm.FunctionCall{Name: "kb__search", Arguments: `{"q":"x"}`},
+						Function: llm.FunctionCall{Name: "agent-sql-mcp__list_orders", Arguments: `{"limit":1}`},
 					}},
 				},
 			}},
@@ -170,9 +170,9 @@ func TestDriverSchemaMismatchHardAbort(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"tool_result": map[string]any{
 				"ok":           true,
-				"data":         map[string]any{"rows": "not-an-array"},
-				"mcp":          "kb",
-				"tool":         "search",
+				"data":         map[string]any{"orders": "not-an-array"},
+				"mcp":          "agent-sql-mcp",
+				"tool":         "list_orders",
 				"request_uuid": "req-1",
 			},
 		})
@@ -189,7 +189,7 @@ func TestDriverSchemaMismatchHardAbort(t *testing.T) {
 func TestDriverGatewayErrorEnvelopeFedBack(t *testing.T) {
 	_, cat, reg := mustBundleAndCatalog(t)
 	llmC, scripted := newScriptedLLM(t, []llm.ChatCompletionResponse{
-		{Choices: []llm.Choice{{FinishReason: "tool_calls", Message: llm.AssistantMessage{Role: "assistant", ToolCalls: []llm.ToolCall{{ID: "c1", Type: "function", Function: llm.FunctionCall{Name: "kb__search", Arguments: `{"q":"x"}`}}}}}}},
+		{Choices: []llm.Choice{{FinishReason: "tool_calls", Message: llm.AssistantMessage{Role: "assistant", ToolCalls: []llm.ToolCall{{ID: "c1", Type: "function", Function: llm.FunctionCall{Name: "agent-sql-mcp__list_orders", Arguments: `{"limit":1}`}}}}}}},
 		{Choices: []llm.Choice{{FinishReason: "stop", Message: llm.AssistantMessage{Role: "assistant", Content: "i give up"}}}},
 	})
 	_ = scripted
@@ -199,8 +199,8 @@ func TestDriverGatewayErrorEnvelopeFedBack(t *testing.T) {
 				"ok":           false,
 				"error":        "OPA_DENY",
 				"reason":       "missing_permission",
-				"mcp":          "kb",
-				"tool":         "search",
+				"mcp":          "agent-sql-mcp",
+				"tool":         "list_orders",
 				"request_uuid": "req-1",
 			},
 		})
@@ -232,12 +232,12 @@ func TestDriverUnknownToolFedBack(t *testing.T) {
 func TestDriverIterationCap(t *testing.T) {
 	_, cat, reg := mustBundleAndCatalog(t)
 	llmC, _ := newScriptedLLM(t, []llm.ChatCompletionResponse{
-		{Choices: []llm.Choice{{FinishReason: "tool_calls", Message: llm.AssistantMessage{Role: "assistant", ToolCalls: []llm.ToolCall{{ID: "c1", Type: "function", Function: llm.FunctionCall{Name: "kb__search", Arguments: `{"q":"x"}`}}}}}}},
-		{Choices: []llm.Choice{{FinishReason: "tool_calls", Message: llm.AssistantMessage{Role: "assistant", ToolCalls: []llm.ToolCall{{ID: "c2", Type: "function", Function: llm.FunctionCall{Name: "kb__search", Arguments: `{"q":"x"}`}}}}}}},
+		{Choices: []llm.Choice{{FinishReason: "tool_calls", Message: llm.AssistantMessage{Role: "assistant", ToolCalls: []llm.ToolCall{{ID: "c1", Type: "function", Function: llm.FunctionCall{Name: "agent-sql-mcp__list_orders", Arguments: `{"limit":1}`}}}}}}},
+		{Choices: []llm.Choice{{FinishReason: "tool_calls", Message: llm.AssistantMessage{Role: "assistant", ToolCalls: []llm.ToolCall{{ID: "c2", Type: "function", Function: llm.FunctionCall{Name: "agent-sql-mcp__list_orders", Arguments: `{"limit":1}`}}}}}}},
 	})
 	gwC := newStubGateway(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"tool_result": map[string]any{"ok": true, "data": map[string]any{"rows": []any{}}, "mcp": "kb", "tool": "search", "request_uuid": "req-1"},
+			"tool_result": map[string]any{"ok": true, "data": map[string]any{"orders": []any{}}, "mcp": "agent-sql-mcp", "tool": "list_orders", "request_uuid": "req-1"},
 		})
 	}))
 	env := runDriver(t, llmC, gwC, cat, reg, 2)
@@ -253,11 +253,54 @@ func TestDriverLLMHardFailure(t *testing.T) {
 	}))
 	defer srv.Close()
 	llmC := llm.New(srv.URL, 1*time.Second)
-	llmC.RetryBackoff = 1 * time.Millisecond
 	gwC := newStubGateway(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	env := runDriver(t, llmC, gwC, cat, reg, 4)
 	if env.Terminate.FinishReason != FinishLLMError {
 		t.Errorf("finish_reason = %s", env.Terminate.FinishReason)
+	}
+}
+
+func TestDriverDuplicateToolCallSuppressed(t *testing.T) {
+	_, cat, reg := mustBundleAndCatalog(t)
+	// LLM emits list_orders with identical args {} twice in a row, then
+	// terminates with a final assistant message.
+	llmC, _ := newScriptedLLM(t, []llm.ChatCompletionResponse{
+		{Choices: []llm.Choice{{FinishReason: "tool_calls", Message: llm.AssistantMessage{Role: "assistant", ToolCalls: []llm.ToolCall{{ID: "c1", Type: "function", Function: llm.FunctionCall{Name: "agent-sql-mcp__list_orders", Arguments: `{}`}}}}}}},
+		{Choices: []llm.Choice{{FinishReason: "tool_calls", Message: llm.AssistantMessage{Role: "assistant", ToolCalls: []llm.ToolCall{{ID: "c2", Type: "function", Function: llm.FunctionCall{Name: "agent-sql-mcp__list_orders", Arguments: `{}`}}}}}}},
+		{Choices: []llm.Choice{{FinishReason: "stop", Message: llm.AssistantMessage{Role: "assistant", Content: "could not retrieve"}}}},
+	})
+	// Gateway: count how many times it's called and always return an error.
+	var gatewayCalls int
+	gwC := newStubGateway(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gatewayCalls++
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"tool_result": map[string]any{
+				"ok":           false,
+				"error":        "MCP_UNAVAILABLE",
+				"reason":       "upstream down",
+				"mcp":          "agent-sql-mcp",
+				"tool":         "list_orders",
+				"request_uuid": "req-1",
+			},
+		})
+	}))
+	env := runDriver(t, llmC, gwC, cat, reg, 5)
+
+	if env.Terminate.FinishReason != FinishTerminate {
+		t.Errorf("finish_reason = %s", env.Terminate.FinishReason)
+	}
+	// The second identical call must NOT hit the gateway.
+	if gatewayCalls != 1 {
+		t.Errorf("gateway calls = %d, want 1 (duplicate should be suppressed)", gatewayCalls)
+	}
+	if len(env.Terminate.ToolsCalled) != 2 {
+		t.Fatalf("tools_called len = %d, want 2", len(env.Terminate.ToolsCalled))
+	}
+	if env.Terminate.ToolsCalled[0].Outcome != "mcp_unavailable" {
+		t.Errorf("tools_called[0].outcome = %s, want mcp_unavailable", env.Terminate.ToolsCalled[0].Outcome)
+	}
+	if env.Terminate.ToolsCalled[1].Outcome != "duplicate_suppressed" {
+		t.Errorf("tools_called[1].outcome = %s, want duplicate_suppressed", env.Terminate.ToolsCalled[1].Outcome)
 	}
 }
 

@@ -62,6 +62,13 @@ jobs:
     with:
       image: ghcr.io/${{ github.repository }}
       digest: ${{ needs.image.outputs.digest }}
+      registry-username: ${{ github.actor }}
+    secrets:
+      # provenance/final pushes the attestation to ghcr.io; without explicit
+      # registry creds the reusable workflow's docker login is skipped and
+      # the final step exits 27 with SUCCESS=false even though detect-env +
+      # generator both succeed. agent-gateway's workflow has the same pair.
+      registry-password: ${{ secrets.GITHUB_TOKEN }}
 
   chart:
     runs-on: ubuntu-latest

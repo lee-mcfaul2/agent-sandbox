@@ -16,14 +16,14 @@ func TestLoadBundle(t *testing.T) {
 	if !strings.HasPrefix(b.Digest, "sha256:") {
 		t.Errorf("digest prefix wrong: %q", b.Digest)
 	}
-	if _, ok := b.Schemas["kb/search.request"]; !ok {
-		t.Error("missing kb/search.request")
+	if _, ok := b.Schemas["agent-sql-mcp/list_orders.request"]; !ok {
+		t.Error("missing agent-sql-mcp/list_orders.request")
 	}
-	if _, ok := b.Schemas["kb/search.response"]; !ok {
-		t.Error("missing kb/search.response")
+	if _, ok := b.Schemas["agent-sql-mcp/list_orders.response"]; !ok {
+		t.Error("missing agent-sql-mcp/list_orders.response")
 	}
-	if _, ok := b.Schemas["audit_db/search.request"]; !ok {
-		t.Error("missing audit_db/search.request")
+	if _, ok := b.Schemas["agent-sql-mcp/lookup_customer.request"]; !ok {
+		t.Error("missing agent-sql-mcp/lookup_customer.request")
 	}
 }
 
@@ -37,11 +37,11 @@ func TestDigestDeterministic(t *testing.T) {
 
 func TestSchemaLookup(t *testing.T) {
 	b, _ := LoadEmbedded()
-	raw, ok := b.RequestSchema("kb", "search")
+	raw, ok := b.RequestSchema("agent-sql-mcp", "list_orders")
 	if !ok {
 		t.Fatal("RequestSchema missed")
 	}
-	if !strings.Contains(string(raw), `"q"`) {
+	if !strings.Contains(string(raw), `"customer_id"`) {
 		t.Errorf("unexpected schema content: %s", raw)
 	}
 }

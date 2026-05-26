@@ -10,7 +10,7 @@ import (
 
 func TestBuildCatalog(t *testing.T) {
 	b, _ := schemas.LoadEmbedded()
-	cat, err := BuildCatalog(b, []string{"kb.search", "audit_db.search"})
+	cat, err := BuildCatalog(b, []string{"agent-sql-mcp.list_orders", "agent-sql-mcp.lookup_customer"})
 	if err != nil {
 		t.Fatalf("BuildCatalog: %v", err)
 	}
@@ -26,7 +26,7 @@ func TestBuildCatalog(t *testing.T) {
 		t.Errorf("type = %v", first["type"])
 	}
 	fn := first["function"].(map[string]any)
-	if fn["name"] != "kb__search" && fn["name"] != "audit_db__search" {
+	if fn["name"] != "agent-sql-mcp__list_orders" && fn["name"] != "agent-sql-mcp__lookup_customer" {
 		t.Errorf("function name = %v", fn["name"])
 	}
 }
@@ -47,12 +47,12 @@ func TestBuildCatalogMalformedEntry(t *testing.T) {
 
 func TestCatalogContains(t *testing.T) {
 	b, _ := schemas.LoadEmbedded()
-	cat, _ := BuildCatalog(b, []string{"kb.search"})
-	if !cat.Contains("kb", "search") {
-		t.Error("expected to contain kb.search")
+	cat, _ := BuildCatalog(b, []string{"agent-sql-mcp.list_orders"})
+	if !cat.Contains("agent-sql-mcp", "list_orders") {
+		t.Error("expected to contain agent-sql-mcp.list_orders")
 	}
-	if cat.Contains("kb", "fetch") {
-		t.Error("did not expect kb.fetch")
+	if cat.Contains("agent-sql-mcp", "get_order") {
+		t.Error("did not expect agent-sql-mcp.get_order")
 	}
 }
 
@@ -94,7 +94,7 @@ func TestBuildCatalogUsesBundleDescription(t *testing.T) {
 
 func TestOpenAIToolsParametersAreJSON(t *testing.T) {
 	b, _ := schemas.LoadEmbedded()
-	cat, _ := BuildCatalog(b, []string{"kb.search"})
+	cat, _ := BuildCatalog(b, []string{"agent-sql-mcp.list_orders"})
 	raw, err := json.Marshal(cat.OpenAITools)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)

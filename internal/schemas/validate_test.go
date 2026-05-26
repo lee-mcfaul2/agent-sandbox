@@ -8,17 +8,17 @@ import (
 func TestCompileAllValidators(t *testing.T) {
 	b, _ := LoadEmbedded()
 	reg, err := CompileValidators(b, []ToolRef{
-		{MCP: "kb", Tool: "search"},
-		{MCP: "audit_db", Tool: "search"},
+		{MCP: "agent-sql-mcp", Tool: "list_orders"},
+		{MCP: "agent-sql-mcp", Tool: "lookup_customer"},
 	})
 	if err != nil {
 		t.Fatalf("CompileValidators: %v", err)
 	}
-	if reg.Response("kb", "search") == nil {
-		t.Error("missing kb.search response validator")
+	if reg.Response("agent-sql-mcp", "list_orders") == nil {
+		t.Error("missing agent-sql-mcp.list_orders response validator")
 	}
-	if reg.Response("audit_db", "search") == nil {
-		t.Error("missing audit_db.search response validator")
+	if reg.Response("agent-sql-mcp", "lookup_customer") == nil {
+		t.Error("missing agent-sql-mcp.lookup_customer response validator")
 	}
 }
 
@@ -32,11 +32,18 @@ func TestCompileUnknownTool(t *testing.T) {
 
 func TestValidateResponseHappy(t *testing.T) {
 	b, _ := LoadEmbedded()
-	reg, _ := CompileValidators(b, []ToolRef{{MCP: "kb", Tool: "search"}})
-	v := reg.Response("kb", "search")
+	reg, _ := CompileValidators(b, []ToolRef{{MCP: "agent-sql-mcp", Tool: "list_orders"}})
+	v := reg.Response("agent-sql-mcp", "list_orders")
 	doc := map[string]any{
-		"rows": []any{
-			map[string]any{"id": "1", "title": "x"},
+		"orders": []any{
+			map[string]any{
+				"id":          1,
+				"customer_id": 1,
+				"status":      "placed",
+				"total_cents": 1000,
+				"currency":    "USD",
+				"placed_at":   "2026-05-26T00:00:00Z",
+			},
 		},
 	}
 	raw, _ := json.Marshal(doc)
@@ -47,9 +54,9 @@ func TestValidateResponseHappy(t *testing.T) {
 
 func TestValidateResponseBad(t *testing.T) {
 	b, _ := LoadEmbedded()
-	reg, _ := CompileValidators(b, []ToolRef{{MCP: "kb", Tool: "search"}})
-	v := reg.Response("kb", "search")
-	doc := map[string]any{"rows": "not-an-array"}
+	reg, _ := CompileValidators(b, []ToolRef{{MCP: "agent-sql-mcp", Tool: "list_orders"}})
+	v := reg.Response("agent-sql-mcp", "list_orders")
+	doc := map[string]any{"orders": "not-an-array"}
 	raw, _ := json.Marshal(doc)
 	if err := v.Validate(raw); err == nil {
 		t.Fatal("expected validation error")

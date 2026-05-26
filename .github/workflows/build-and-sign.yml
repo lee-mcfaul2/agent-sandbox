@@ -24,7 +24,7 @@ jobs:
       - uses: sigstore/cosign-installer@v3
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          go-version: "1.25"
       - id: ver
         run: echo "v=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
       - name: build + push

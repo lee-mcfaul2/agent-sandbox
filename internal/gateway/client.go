@@ -11,13 +11,19 @@ import (
 )
 
 type ToolResult struct {
-	OK          bool            `json:"ok"`
-	Data        json.RawMessage `json:"data,omitempty"`
-	Error       string          `json:"error,omitempty"`
-	Reason      string          `json:"reason,omitempty"`
-	MCP         string          `json:"mcp"`
-	Tool        string          `json:"tool"`
-	RequestUUID string          `json:"request_uuid"`
+	OK   bool            `json:"ok"`
+	Data json.RawMessage `json:"data,omitempty"`
+	// DataPlaintext is the pre-scrub copy the gateway ships so the sandbox can
+	// re-validate against the bundle's plaintext-shape response schema. It is
+	// sandbox-internal only — the LLM-facing serialization in driver.go MUST
+	// clear it before building the tool message (or the LLM would see plaintext
+	// PII, defeating the tokenization barrier).
+	DataPlaintext json.RawMessage `json:"data_plaintext,omitempty"`
+	Error         string          `json:"error,omitempty"`
+	Reason        string          `json:"reason,omitempty"`
+	MCP           string          `json:"mcp"`
+	Tool          string          `json:"tool"`
+	RequestUUID   string          `json:"request_uuid"`
 }
 
 type Client struct {

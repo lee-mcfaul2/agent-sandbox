@@ -186,14 +186,22 @@ func (d *Driver) dispatchToolCall(
 		)
 	}
 
-	// Validate the response schema only on success responses.
+	// Validate the response against the bundle's plaintext-shape schema.
+	// The schema describes pre-scrub field shapes (e.g. currency: maxLength
+	// 3, email: format email); res.Data is the tokenized copy the sandbox
+	// passes to the LLM and would false-fail. res.DataPlaintext is the
+	// gateway-shipped pre-scrub copy used here for validation only — it is
+	// stripped before the tool message is built below.
 	if res.OK {
 		v := d.Validators.Response(mcp, tool)
 		var validationErr error
-		if v == nil {
+		switch {
+		case v == nil:
 			validationErr = fmt.Errorf("no validator for %s/%s", mcp, tool)
-		} else {
-			validationErr = v.Validate(res.Data)
+		case len(res.DataPlaintext) == 0:
+			validationErr = fmt.Errorf("gateway omitted data_plaintext for %s/%s", mcp, tool)
+		default:
+			validationErr = v.Validate(res.DataPlaintext)
 		}
 		if validationErr != nil {
 			d.Logger.Error("schema_mismatch", map[string]any{
@@ -228,7 +236,12 @@ func (d *Driver) dispatchToolCall(
 		"duration_ms": time.Since(start).Milliseconds(),
 	})
 
-	body, _ := json.Marshal(res)
+	// Clone res with DataPlaintext stripped — the LLM must see only the
+	// tokenized payload; the plaintext copy is a sandbox-internal validation
+	// channel and never crosses into model context.
+	forLLM := *res
+	forLLM.DataPlaintext = nil
+	body, _ := json.Marshal(forLLM)
 	*messages = append(*messages, llm.Message{Role: "tool", ToolCallID: tc.ID, Content: string(body)})
 
 	// Record outcome for duplicate-call detection on the next iteration.

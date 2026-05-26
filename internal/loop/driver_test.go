@@ -129,11 +129,12 @@ func TestDriverOneToolCallThenTerminate(t *testing.T) {
 	gwC := newStubGateway(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"tool_result": map[string]any{
-				"ok":           true,
-				"data":         map[string]any{"orders": []any{}},
-				"mcp":          "agent-sql-mcp",
-				"tool":         "list_orders",
-				"request_uuid": "req-1",
+				"ok":             true,
+				"data":           map[string]any{"orders": []any{}},
+				"data_plaintext": map[string]any{"orders": []any{}},
+				"mcp":            "agent-sql-mcp",
+				"tool":           "list_orders",
+				"request_uuid":   "req-1",
 			},
 		})
 	}))
@@ -150,6 +151,95 @@ func TestDriverOneToolCallThenTerminate(t *testing.T) {
 }
 
 func TestDriverSchemaMismatchHardAbort(t *testing.T) {
+	// Plaintext copy fails validation; the tokenized data is irrelevant here.
+	_, cat, reg := mustBundleAndCatalog(t)
+	llmC, _ := newScriptedLLM(t, []llm.ChatCompletionResponse{
+		{
+			Choices: []llm.Choice{{
+				FinishReason: "tool_calls",
+				Message: llm.AssistantMessage{
+					Role: "assistant",
+					ToolCalls: []llm.ToolCall{{
+						ID:       "c1",
+						Type:     "function",
+						Function: llm.FunctionCall{Name: "agent-sql-mcp__list_orders", Arguments: `{"limit":1}`},
+					}},
+				},
+			}},
+		},
+	})
+	gwC := newStubGateway(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"tool_result": map[string]any{
+				"ok":             true,
+				"data":           map[string]any{"orders": []any{}},
+				"data_plaintext": map[string]any{"orders": "not-an-array"},
+				"mcp":            "agent-sql-mcp",
+				"tool":           "list_orders",
+				"request_uuid":   "req-1",
+			},
+		})
+	}))
+	env := runDriver(t, llmC, gwC, cat, reg, 4)
+	if env.Terminate.FinishReason != FinishSchemaMismatch {
+		t.Errorf("finish_reason = %s", env.Terminate.FinishReason)
+	}
+	if env.Terminate.Error == nil || env.Terminate.Error.Category != "SANDBOX_RESPONSE_SCHEMA_MISMATCH" {
+		t.Errorf("error = %+v", env.Terminate.Error)
+	}
+}
+
+func TestDriverValidationUsesPlaintextNotTokenized(t *testing.T) {
+	// Regression for the 2026-05-26 alice failure: the gateway scrubs
+	// plaintext PII before forwarding to the sandbox. Validating the
+	// tokenized copy against a schema like `currency: maxLength 3` would
+	// false-fail. The sandbox must validate against data_plaintext while
+	// passing data (tokenized) to the LLM.
+	_, cat, reg := mustBundleAndCatalog(t)
+	llmC, _ := newScriptedLLM(t, []llm.ChatCompletionResponse{
+		{
+			Choices: []llm.Choice{{
+				FinishReason: "tool_calls",
+				Message: llm.AssistantMessage{
+					Role: "assistant",
+					ToolCalls: []llm.ToolCall{{
+						ID:       "c1",
+						Type:     "function",
+						Function: llm.FunctionCall{Name: "agent-sql-mcp__list_orders", Arguments: `{"limit":1}`},
+					}},
+				},
+			}},
+		},
+		{Choices: []llm.Choice{{FinishReason: "stop", Message: llm.AssistantMessage{Role: "assistant", Content: "done"}}}},
+	})
+	gwC := newStubGateway(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Tokenized 'data' has fields outside the schema (e.g. simulated
+		// TOKEN_NAME_<base32> bloat); plaintext copy is in-schema. Validation
+		// must use plaintext and pass.
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"tool_result": map[string]any{
+				"ok":             true,
+				"data":           map[string]any{"orders": []any{}, "scrubbed": "TOKEN_NAME_AAAABBBBCCCC"},
+				"data_plaintext": map[string]any{"orders": []any{}},
+				"mcp":            "agent-sql-mcp",
+				"tool":           "list_orders",
+				"request_uuid":   "req-1",
+			},
+		})
+	}))
+	env := runDriver(t, llmC, gwC, cat, reg, 4)
+	if env.Terminate.FinishReason != FinishTerminate {
+		t.Fatalf("finish_reason = %s (validation should have used plaintext copy and passed)", env.Terminate.FinishReason)
+	}
+	if env.Terminate.ToolsCalled[0].Outcome != "ok" {
+		t.Errorf("outcome = %s", env.Terminate.ToolsCalled[0].Outcome)
+	}
+}
+
+func TestDriverMissingPlaintextIsSchemaMismatch(t *testing.T) {
+	// Defense: if the gateway omits data_plaintext on a success response, the
+	// sandbox cannot validate. The contract is gateway-supplied; absence is a
+	// schema_mismatch error, not silently OK.
 	_, cat, reg := mustBundleAndCatalog(t)
 	llmC, _ := newScriptedLLM(t, []llm.ChatCompletionResponse{
 		{
@@ -170,7 +260,7 @@ func TestDriverSchemaMismatchHardAbort(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"tool_result": map[string]any{
 				"ok":           true,
-				"data":         map[string]any{"orders": "not-an-array"},
+				"data":         map[string]any{"orders": []any{}},
 				"mcp":          "agent-sql-mcp",
 				"tool":         "list_orders",
 				"request_uuid": "req-1",
@@ -179,10 +269,7 @@ func TestDriverSchemaMismatchHardAbort(t *testing.T) {
 	}))
 	env := runDriver(t, llmC, gwC, cat, reg, 4)
 	if env.Terminate.FinishReason != FinishSchemaMismatch {
-		t.Errorf("finish_reason = %s", env.Terminate.FinishReason)
-	}
-	if env.Terminate.Error == nil || env.Terminate.Error.Category != "SANDBOX_RESPONSE_SCHEMA_MISMATCH" {
-		t.Errorf("error = %+v", env.Terminate.Error)
+		t.Errorf("finish_reason = %s (missing data_plaintext should fail)", env.Terminate.FinishReason)
 	}
 }
 
@@ -237,7 +324,7 @@ func TestDriverIterationCap(t *testing.T) {
 	})
 	gwC := newStubGateway(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"tool_result": map[string]any{"ok": true, "data": map[string]any{"orders": []any{}}, "mcp": "agent-sql-mcp", "tool": "list_orders", "request_uuid": "req-1"},
+			"tool_result": map[string]any{"ok": true, "data": map[string]any{"orders": []any{}}, "data_plaintext": map[string]any{"orders": []any{}}, "mcp": "agent-sql-mcp", "tool": "list_orders", "request_uuid": "req-1"},
 		})
 	}))
 	env := runDriver(t, llmC, gwC, cat, reg, 2)

@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"time"
+
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 type Client struct {
@@ -20,7 +22,13 @@ type Client struct {
 func New(baseURL string, timeout time.Duration) *Client {
 	return &Client{
 		BaseURL: baseURL,
-		HTTP:    &http.Client{Timeout: timeout},
+		// otelhttp transport propagates W3C traceparent on outbound LLM
+		// calls so the gateway-side LiteLLM proxy sees the sandbox's span
+		// as the parent. Without this the LLM call would be an orphan span.
+		HTTP: &http.Client{
+			Timeout:   timeout,
+			Transport: otelhttp.NewTransport(http.DefaultTransport),
+		},
 	}
 }
 

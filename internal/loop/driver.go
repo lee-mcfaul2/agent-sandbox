@@ -12,6 +12,10 @@ import (
 	"github.com/lee-mcfaul2/agent-sandbox/internal/obs"
 	"github.com/lee-mcfaul2/agent-sandbox/internal/schemas"
 	"github.com/lee-mcfaul2/agent-sandbox/internal/tools"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Config holds the per-request parameters for a Driver run.
@@ -23,6 +27,12 @@ type Config struct {
 	UserInput        string
 	MaxIterations    int
 	WallclockTimeout time.Duration
+	// Traceparent is the W3C trace-context header value the gateway passed
+	// when launching this Job. The driver extracts it into the OTel context
+	// so spans this Run creates (per LLM call, per tool call) are children
+	// of the gateway's request span -- a Tempo search by trace_id then
+	// shows the full prompt lifecycle.
+	Traceparent string
 }
 
 // Driver is the main agent loop. It orchestrates LLM calls, tool dispatches,
@@ -42,6 +52,23 @@ func (d *Driver) Run(ctx context.Context) (Envelope, error) {
 	ctx, cancel := context.WithTimeout(ctx, d.Config.WallclockTimeout)
 	defer cancel()
 
+	// Continue the gateway's trace via the W3C traceparent header. If empty
+	// or unparseable, otel falls back to starting a fresh root span here.
+	if d.Config.Traceparent != "" {
+		carrier := propagation.MapCarrier{"traceparent": d.Config.Traceparent}
+		ctx = otel.GetTextMapPropagator().Extract(ctx, carrier)
+	}
+	tracer := otel.Tracer("agent-sandbox")
+	ctx, runSpan := tracer.Start(ctx, "sandbox.agent_loop",
+		trace.WithAttributes(
+			attribute.String("request_uuid", d.Config.RequestUUID),
+			attribute.String("prompt_uuid", d.Config.PromptUUID),
+			attribute.String("model", d.Config.Model),
+			attribute.Int("max_iterations", d.Config.MaxIterations),
+		),
+	)
+	defer runSpan.End()
+
 	messages := []llm.Message{
 		{Role: "system", Content: d.Config.SystemPrompt},
 		{Role: "user", Content: d.Config.UserInput},
@@ -59,25 +86,40 @@ func (d *Driver) Run(ctx context.Context) (Envelope, error) {
 
 	for iter < d.Config.MaxIterations {
 		iter++
+		iterCtx, iterSpan := tracer.Start(ctx, "sandbox.iteration",
+			trace.WithAttributes(attribute.Int("iteration", iter)),
+		)
+		ctx = iterCtx
+		_ = iterSpan // ended after dispatch loop below
 		d.Logger.Info("llm_call_start", map[string]any{
 			"iteration": iter,
 			"model":     d.Config.Model,
 		})
 
 		start := time.Now()
-		resp, err := d.LLM.Call(ctx, llm.ChatCompletionRequest{
+		llmCallCtx, llmSpan := tracer.Start(ctx, "sandbox.llm_call",
+			trace.WithAttributes(attribute.Int("iteration", iter)),
+		)
+		resp, err := d.LLM.Call(llmCallCtx, llm.ChatCompletionRequest{
 			Model:      d.Config.Model,
 			Messages:   messages,
 			Tools:      d.Catalog.OpenAITools,
 			ToolChoice: "auto",
 		})
 		if err != nil {
+			llmSpan.End()
+			iterSpan.End()
 			if errors.Is(err, context.DeadlineExceeded) {
 				return d.buildFailure(FinishWallclockTimeout, nil, iter, calls, totalTokens, ""), nil
 			}
 			d.Logger.Error("llm_call_failed", map[string]any{"iteration": iter, "err": err.Error()})
 			return d.buildFailure(FinishLLMError, &ErrorBlock{Category: "LITELLM_UNREACHABLE", Message: err.Error()}, iter, calls, totalTokens, ""), nil
 		}
+		llmSpan.SetAttributes(
+			attribute.Int("tokens.prompt", resp.Usage.PromptTokens),
+			attribute.Int("tokens.completion", resp.Usage.CompletionTokens),
+		)
+		llmSpan.End()
 		d.Logger.Info("llm_call_end", map[string]any{
 			"iteration":   iter,
 			"duration_ms": time.Since(start).Milliseconds(),
@@ -91,6 +133,8 @@ func (d *Driver) Run(ctx context.Context) (Envelope, error) {
 
 		// No tool calls → LLM has terminated naturally.
 		if len(msg.ToolCalls) == 0 {
+			iterSpan.SetAttributes(attribute.Bool("terminate", true))
+			iterSpan.End()
 			return BuildEnvelope(EnvelopeInput{
 				RequestUUID:  d.Config.RequestUUID,
 				PromptUUID:   d.Config.PromptUUID,
@@ -116,9 +160,11 @@ func (d *Driver) Run(ctx context.Context) (Envelope, error) {
 			summary, fatal, fatalEnv := d.dispatchToolCall(ctx, tc, &messages, iter, calls, totalTokens, priorOutcomes)
 			calls = append(calls, summary)
 			if fatal {
+				iterSpan.End()
 				return fatalEnv, nil
 			}
 		}
+		iterSpan.End()
 	}
 
 	return d.buildFailure(FinishIterationCap, nil, iter, calls, totalTokens, ""), nil
@@ -138,13 +184,27 @@ func (d *Driver) dispatchToolCall(
 	priorOutcomes map[string]string,
 ) (ToolCallSummary, bool, Envelope) {
 	mcp, tool, err := tools.DecodeName(tc.Function.Name)
+	tracer := otel.Tracer("agent-sandbox")
+	tcCtx, tcSpan := tracer.Start(ctx, "sandbox.tool_call",
+		trace.WithAttributes(
+			attribute.Int("iteration", iter),
+			attribute.String("tool.name", tc.Function.Name),
+		),
+	)
+	defer tcSpan.End()
 	if err != nil || !d.Catalog.Contains(mcp, tool) {
 		// Unknown tool: feed an error message back to the LLM and continue.
+		tcSpan.SetAttributes(attribute.String("outcome", "unknown"))
 		d.Logger.Info("tool_call", map[string]any{"iteration": iter, "name": tc.Function.Name, "outcome": "unknown"})
 		body, _ := json.Marshal(map[string]string{"error": "UNKNOWN_TOOL", "name": tc.Function.Name})
 		*messages = append(*messages, llm.Message{Role: "tool", ToolCallID: tc.ID, Content: string(body)})
 		return ToolCallSummary{MCP: "", Tool: tc.Function.Name, Outcome: "unknown"}, false, Envelope{}
 	}
+	tcSpan.SetAttributes(
+		attribute.String("mcp", mcp),
+		attribute.String("tool", tool),
+	)
+	ctx = tcCtx
 
 	// Duplicate-tool-call guard: if this exact (mcp, tool, arguments) triple
 	// already failed in a prior iteration this Run, do not re-dispatch.

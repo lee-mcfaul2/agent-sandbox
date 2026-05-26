@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"time"
+
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 type ToolResult struct {
@@ -35,8 +37,16 @@ type Client struct {
 
 func New(baseURL string, timeout time.Duration) *Client {
 	return &Client{
-		BaseURL:      baseURL,
-		HTTP:         &http.Client{Timeout: timeout},
+		BaseURL: baseURL,
+		// otelhttp.NewTransport wraps the default http transport so every
+		// outbound request automatically injects W3C `traceparent` from the
+		// active span context. Combined with the sandbox loop's parent
+		// span this makes the gateway → MCP call appear as a child of the
+		// sandbox iteration span in Tempo.
+		HTTP: &http.Client{
+			Timeout:   timeout,
+			Transport: otelhttp.NewTransport(http.DefaultTransport),
+		},
 		RetryBackoff: 1 * time.Second,
 	}
 }

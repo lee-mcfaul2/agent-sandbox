@@ -61,6 +61,20 @@ func run() int {
 	logger := obs.New(os.Stderr, cfg.RequestUUID)
 	logger.Info("startup", map[string]any{"prompt_uuid": cfg.PromptUUID})
 
+	// OTel: install tracer provider + W3C propagator. If OTLPEndpoint is
+	// empty, this is a no-op (spans created but not exported). Always set
+	// up so the propagator is registered and downstream calls carry
+	// `traceparent` whether or not exports are enabled.
+	tracingShutdown, err := obs.SetupTracing(context.Background(), cfg.OTLPEndpoint, cfg.ServiceName)
+	if err != nil {
+		logger.Error("tracing_setup_failed", map[string]any{"err": err.Error()})
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = tracingShutdown(shutdownCtx)
+	}()
+
 	bundle, err := schemas.LoadEmbedded()
 	if err != nil {
 		emitMinimalFailure(cfg.RequestUUID, cfg.PromptUUID, loop.FinishInternalError, &loop.ErrorBlock{
@@ -112,6 +126,7 @@ func run() int {
 			UserInput:        cfg.TokenizedUserInput,
 			MaxIterations:    cfg.MaxIterations,
 			WallclockTimeout: time.Duration(cfg.WallclockTimeoutSec) * time.Second,
+			Traceparent:      cfg.Traceparent,
 		},
 		LLM:        llmClient,
 		Gateway:    gwClient,

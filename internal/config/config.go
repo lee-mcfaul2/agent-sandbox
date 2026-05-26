@@ -21,6 +21,8 @@ type Config struct {
 	MaxIterations       int
 	WallclockTimeoutSec int
 	Traceparent         string
+	OTLPEndpoint        string
+	ServiceName         string
 }
 
 func Load() (*Config, error) {
@@ -32,6 +34,8 @@ func Load() (*Config, error) {
 		TokenizedUserInput: os.Getenv("TOKENIZED_USER_INPUT"),
 		Model:              os.Getenv("MODEL"),
 		Traceparent:        os.Getenv("TRACEPARENT"),
+		OTLPEndpoint:       os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"),
+		ServiceName:        envOr(os.Getenv("OTEL_SERVICE_NAME"), "agent-sandbox"),
 	}
 
 	required := map[string]string{
@@ -83,4 +87,11 @@ func Load() (*Config, error) {
 	cfg.WallclockTimeoutSec = wallclock
 
 	return cfg, nil
+}
+
+func envOr(v, def string) string {
+	if v == "" {
+		return def
+	}
+	return v
 }

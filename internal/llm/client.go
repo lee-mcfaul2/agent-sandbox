@@ -11,18 +11,16 @@ import (
 )
 
 type Client struct {
-	BaseURL      string
-	HTTP         *http.Client
-	Traceparent  string
-	RetryBackoff time.Duration
-	RequestUUID  string
+	BaseURL     string
+	HTTP        *http.Client
+	Traceparent string
+	RequestUUID string
 }
 
 func New(baseURL string, timeout time.Duration) *Client {
 	return &Client{
-		BaseURL:      baseURL,
-		HTTP:         &http.Client{Timeout: timeout},
-		RetryBackoff: 1 * time.Second,
+		BaseURL: baseURL,
+		HTTP:    &http.Client{Timeout: timeout},
 	}
 }
 
@@ -31,23 +29,11 @@ func (c *Client) Call(ctx context.Context, req ChatCompletionRequest) (*ChatComp
 	if err != nil {
 		return nil, err
 	}
-
-	var lastErr error
-	for attempt := 0; attempt < 2; attempt++ {
-		if attempt > 0 {
-			select {
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			case <-time.After(c.RetryBackoff):
-			}
-		}
-		res, err := c.do(ctx, body)
-		if err == nil {
-			return res, nil
-		}
-		lastErr = err
+	res, err := c.do(ctx, body)
+	if err != nil {
+		return nil, fmt.Errorf("litellm call failed: %w", err)
 	}
-	return nil, fmt.Errorf("litellm call failed after retry: %w", lastErr)
+	return res, nil
 }
 
 func (c *Client) do(ctx context.Context, body []byte) (*ChatCompletionResponse, error) {

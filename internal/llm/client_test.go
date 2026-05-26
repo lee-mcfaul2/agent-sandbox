@@ -88,43 +88,19 @@ func TestClientWithToolCalls(t *testing.T) {
 	}
 }
 
-func TestClientRetriesOnce(t *testing.T) {
+func TestClientFailsOnFirstError(t *testing.T) {
 	var attempts int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		n := atomic.AddInt32(&attempts, 1)
-		if n == 1 {
-			http.Error(w, "boom", http.StatusInternalServerError)
-			return
-		}
-		_ = json.NewEncoder(w).Encode(ChatCompletionResponse{
-			Choices: []Choice{{FinishReason: "stop", Message: AssistantMessage{Role: "assistant", Content: "ok"}}},
-		})
-	}))
-	defer srv.Close()
-
-	c := New(srv.URL, 500*time.Millisecond)
-	c.RetryBackoff = 1 * time.Millisecond
-	res, err := c.Call(context.Background(), ChatCompletionRequest{Model: "x"})
-	if err != nil {
-		t.Fatalf("Call: %v", err)
-	}
-	if res.Choices[0].Message.Content != "ok" {
-		t.Errorf("content = %q", res.Choices[0].Message.Content)
-	}
-	if atomic.LoadInt32(&attempts) != 2 {
-		t.Errorf("attempts = %d", attempts)
-	}
-}
-
-func TestClientFailsAfterRetry(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&attempts, 1)
 		http.Error(w, "boom", http.StatusInternalServerError)
 	}))
 	defer srv.Close()
 	c := New(srv.URL, 500*time.Millisecond)
-	c.RetryBackoff = 1 * time.Millisecond
 	if _, err := c.Call(context.Background(), ChatCompletionRequest{Model: "x"}); err == nil {
 		t.Fatal("expected error")
+	}
+	if got := atomic.LoadInt32(&attempts); got != 1 {
+		t.Errorf("attempts = %d, want 1 (PoC policy: zero retries, fail-closed)", got)
 	}
 }
 
